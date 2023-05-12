@@ -40,8 +40,7 @@ def parse_args():
     parser.add_argument("--tune-model-path", type=str, default=None, help="Base model to finetune")
     parser.add_argument("--fresh-opt", default=False, action="store_true", help="Use a newly initialized optimizer, ignoring any optimizer state saved in the base checkpoint")
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def save(network, step, bucket, path, mp, aux=None, keep_n=3, delete_old=True):
@@ -229,13 +228,12 @@ if __name__ == "__main__":
 
     global_val_batch = per_replica_batch * tpu_size // cores_per_replica
 
-    val_sets = {}
-
-    for k, v in params['val_set'].items():
-        val_sets[k] = TFRecordNewInputs(f"data/{v}",
-                                        batch_size=(global_val_batch,),
-                                        sample_size=seq)
-
+    val_sets = {
+        k: TFRecordNewInputs(
+            f"data/{v}", batch_size=(global_val_batch,), sample_size=seq
+        )
+        for k, v in params['val_set'].items()
+    }
     # tok/sec metrics
     windows_per_step = gradient_accumulation_steps * (per_replica_batch * tpu_size // cores_per_replica)
     tokens_per_step = params['seq'] * windows_per_step
@@ -288,11 +286,14 @@ if __name__ == "__main__":
 
             if step % val_every == 1:  # 1 because we've already taken a step to compile train fn
                 for name, val_set in val_sets.items():
-                    val_loss = []
-                    for i, _ in tqdm(zip(val_set.sample_once(), range(val_batches)),
-                                     desc=f"validation for step {step}, set {name}",
-                                     total=val_batches):
-                        val_loss.append(eval_step(network, i))
+                    val_loss = [
+                        eval_step(network, i)
+                        for i, _ in tqdm(
+                            zip(val_set.sample_once(), range(val_batches)),
+                            desc=f"validation for step {step}, set {name}",
+                            total=val_batches,
+                        )
+                    ]
                     val_set.reset()
 
                     val_loss = np.array(val_loss).mean()

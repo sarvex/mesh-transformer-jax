@@ -28,10 +28,7 @@ class ReplicatedLayerNorm(hk.Module):
         mean = jnp.broadcast_to(mean, inputs.shape)
 
         inv = scale * jax.lax.rsqrt(variance + 1e-5)
-        if self.offset:
-            return inv * (inputs - mean) + offset
-        else:
-            return inv * (inputs - mean)
+        return inv * (inputs - mean) + offset if self.offset else inv * (inputs - mean)
 
 
 class RMSNorm(hk.Module):
@@ -113,14 +110,11 @@ class RelativePositionEmbs(hk.Module):
         bcast_iota = jax.lax.broadcasted_iota(jnp.int32, (num_buckets, 1, 1), 0)
         rp_bucket_one_hot = jnp.array(rp_bucket[jnp.newaxis, Ellipsis] == bcast_iota).astype(
             relative_attention_bias.dtype)
-        # --> shape (qlen, klen, num_heads)
-        values = jax.lax.dot_general(
+        return jax.lax.dot_general(
             relative_attention_bias,
             rp_bucket_one_hot,
-            (
-                ((1,), (0,)),  # rhs, lhs contracting dims
-                ((), ())))  # no batched dims
-        return values
+            (((1,), (0,)), ((), ())),  # rhs, lhs contracting dims
+        )
 
 
 def fixed_pos_embedding(x, seq_dim=0):
@@ -374,9 +368,9 @@ class TransformerLayerShardV2(hk.Module):
         attention_logits += attn_bias
 
         attention_weights = jax.nn.softmax(attention_logits)
-        attention_vec = jnp.einsum("htT,Thd->thd", attention_weights, v).reshape((-1, self.dim_per_shard))
-
-        return attention_vec
+        return jnp.einsum("htT,Thd->thd", attention_weights, v).reshape(
+            (-1, self.dim_per_shard)
+        )
 
     def input(self, x):
         q, v, k, ff = jnp.split(self.input_proj(x), np.cumsum([self.dim_per_shard] * 3), axis=-1)
@@ -507,6 +501,6 @@ class ProjectionShard(hk.Module):
 
         loss += (1e-4 * jnp.square(jnp.log(sum_exp_logits)) * z_loss).mean()
 
-        correct = (0.0 == predicted_logits)
+        correct = predicted_logits == 0.0
 
         return loss, correct

@@ -28,15 +28,13 @@ class CausalTransformerShard(hk.Module):
 
         init_scale = 2. / layer_count
 
-        for i in range(layer_count):
-            self.transformer_layers.append(TransformerLayerShard(config, name=f"layer_{i}", init_scale=init_scale))
-
+        self.transformer_layers.extend(
+            TransformerLayerShard(config, name=f"layer_{i}", init_scale=init_scale)
+            for i in range(layer_count)
+        )
         self.proj = ProjectionShard(config)
 
-        if config["pe"] == "t5":
-            self.rpe = RelativePositionEmbs()
-        else:
-            self.rpe = None
+        self.rpe = RelativePositionEmbs() if config["pe"] == "t5" else None
 
     def eval(self, context, target, z_loss=0., mask=0.0):
         input_len = context.shape[0]
@@ -292,12 +290,7 @@ class CausalTransformer:
         else:
             ctx_length = np.array([len(sample["obs"][0])] * len(sample["obs"]))
 
-        out = self.eval_xmap(self.state, sample["obs"], sample["target"], ctx_length)
-        # print(f"eval dispatched in {time.time() - start:.06}s")
-
-        # np.array(out["loss"])
-        # print(f"eval done in {time.time() - start:.06}s")
-        return out
+        return self.eval_xmap(self.state, sample["obs"], sample["target"], ctx_length)
 
     def generate(self, ctx, ctx_length, gen_length, sampler_options):
         key = hk.PRNGSequence(random.randint(0, 2 ** 60))
@@ -542,9 +535,4 @@ class CausalTransformerV2:
         else:
             ctx_length = np.array([len(sample["obs"][0])] * len(sample["obs"]))
 
-        out = self.eval_xmap(self.state, sample["obs"], sample["target"], ctx_length)
-        # print(f"eval dispatched in {time.time() - start:.06}s")
-
-        # np.array(out["loss"])
-        # print(f"eval done in {time.time() - start:.06}s")
-        return out
+        return self.eval_xmap(self.state, sample["obs"], sample["target"], ctx_length)

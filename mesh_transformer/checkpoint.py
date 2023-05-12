@@ -21,7 +21,7 @@ def index_weights(weights, idx):
 def write(x, ckpt_dir):
     # start = time.time()
     idx, i = x
-    file_path = ckpt_dir + f"{idx}.npz"
+    file_path = f"{ckpt_dir}{idx}.npz"
     for _ in range(3):
         try:
             with open(file_path, "wb") as f:
@@ -69,13 +69,12 @@ def write_ckpt(pytree, dir, shard):
 def read_shard(ckpt_dir):
     out = []
     for idx in range(16):
-        file_path = ckpt_dir + f"{idx}.npz"
+        file_path = f"{ckpt_dir}{idx}.npz"
         with open(file_path, "rb") as f:
             buf = f.read()
             f_io = io.BytesIO(buf)
             deserialized = np.load(f_io)
-            for i in deserialized:
-                out.append(deserialized[i])
+            out.extend(deserialized[i] for i in deserialized)
     return out
 
 
@@ -83,7 +82,7 @@ def reshard(x, old_shape):
     if len(x.shape) == 1:
         # print("epoch")
         # print(x)
-        out = x[0:1]
+        out = x[:1]
 
     elif len(x.shape) == 2:
         # print(f"LN/bias {x.shape}")
@@ -92,10 +91,10 @@ def reshard(x, old_shape):
         if (x[1:] == x[-1]).all():
             # print("LN")
             if (x[1:] == 0).all() or (x[1:] == 1).all():
-                out = x[0:1]
+                out = x[:1]
             else:
                 # print("shard bias")
-                out = x[0:1] * x.shape[0] / old_shape[0]
+                out = x[:1] * x.shape[0] / old_shape[0]
         else:
             # print("bias")
             out = x.reshape(old_shape)
